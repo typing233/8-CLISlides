@@ -30,6 +30,7 @@ type Model struct {
 	mode       mode
 	searchBuf  string
 	searchHits []int
+	searchMsg  string
 	numBuf     string
 	execOutput string
 	lastG      bool
@@ -84,6 +85,7 @@ func (m Model) handleNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		n := m.getNum(1)
 		m.numBuf = ""
 		m.lastG = false
+		m.searchMsg = ""
 		m.navigate(n)
 		return m, nil
 
@@ -91,6 +93,7 @@ func (m Model) handleNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		n := m.getNum(1)
 		m.numBuf = ""
 		m.lastG = false
+		m.searchMsg = ""
 		m.navigate(-n)
 		return m, nil
 
@@ -121,6 +124,7 @@ func (m Model) handleNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "/":
 		m.mode = modeSearch
 		m.searchBuf = ""
+		m.searchMsg = ""
 		m.lastG = false
 		m.numBuf = ""
 		return m, nil
@@ -172,19 +176,23 @@ func (m Model) handleSearch(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m *Model) doSearch() {
 	if m.searchBuf == "" {
+		m.searchMsg = ""
 		return
 	}
 	re, err := regexp.Compile("(?i)" + m.searchBuf)
 	if err != nil {
+		m.searchMsg = fmt.Sprintf("Invalid regex: %s", err.Error())
 		return
 	}
 	for i := 1; i <= len(m.pres.Slides); i++ {
 		idx := (m.current + i) % len(m.pres.Slides)
 		if re.MatchString(m.pres.Slides[idx].Raw) {
 			m.current = idx
+			m.searchMsg = fmt.Sprintf("Found: /%s (slide %d)", m.searchBuf, idx+1)
 			return
 		}
 	}
+	m.searchMsg = fmt.Sprintf("No match: /%s", m.searchBuf)
 }
 
 func (m *Model) navigate(delta int) {
@@ -234,9 +242,16 @@ func (m Model) View() string {
 	}
 
 	rendered := m.renderSlide()
-	statusBar := m.renderStatus()
 
-	contentHeight := m.height - 1
+	showStatus := m.pres.Meta.Pager || m.mode == modeSearch || m.searchMsg != ""
+	statusBar := ""
+	statusLines := 0
+	if showStatus {
+		statusBar = m.renderStatus()
+		statusLines = 1
+	}
+
+	contentHeight := m.height - statusLines
 	lines := strings.Split(rendered, "\n")
 	if len(lines) > contentHeight {
 		lines = lines[:contentHeight]
@@ -245,7 +260,10 @@ func (m Model) View() string {
 		lines = append(lines, "")
 	}
 
-	return strings.Join(lines, "\n") + "\n" + statusBar
+	if showStatus {
+		return strings.Join(lines, "\n") + "\n" + statusBar
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (m Model) renderSlide() string {
@@ -284,16 +302,27 @@ func (m Model) renderStatus() string {
 		Foreground(lipgloss.Color("230")).
 		Padding(0, 1)
 
-	left := ""
-	if m.pres.Meta.Title != "" {
-		left = m.pres.Meta.Title
+	var left string
+	switch {
+	case m.mode == modeSearch:
+		left = fmt.Sprintf("/%s█", m.searchBuf)
+	case m.searchMsg != "":
+		left = m.searchMsg
+	default:
+		parts := []string{}
+		if m.pres.Meta.Title != "" {
+			parts = append(parts, m.pres.Meta.Title)
+		}
+		if m.pres.Meta.Author != "" {
+			parts = append(parts, m.pres.Meta.Author)
+		}
+		if m.pres.Meta.Date != "" {
+			parts = append(parts, m.pres.Meta.Date)
+		}
+		left = strings.Join(parts, " │ ")
 	}
 
 	right := fmt.Sprintf(" %d/%d ", m.current+1, len(m.pres.Slides))
-
-	if m.mode == modeSearch {
-		left = fmt.Sprintf("/%s", m.searchBuf)
-	}
 
 	gap := m.width - lipgloss.Width(left) - lipgloss.Width(right) - 2
 	if gap < 0 {
