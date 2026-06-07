@@ -242,16 +242,9 @@ func (m Model) View() string {
 	}
 
 	rendered := m.renderSlide()
+	statusBar := m.renderStatus()
 
-	showStatus := m.pres.Meta.Pager || m.mode == modeSearch || m.searchMsg != ""
-	statusBar := ""
-	statusLines := 0
-	if showStatus {
-		statusBar = m.renderStatus()
-		statusLines = 1
-	}
-
-	contentHeight := m.height - statusLines
+	contentHeight := m.height - 1
 	lines := strings.Split(rendered, "\n")
 	if len(lines) > contentHeight {
 		lines = lines[:contentHeight]
@@ -260,10 +253,7 @@ func (m Model) View() string {
 		lines = append(lines, "")
 	}
 
-	if showStatus {
-		return strings.Join(lines, "\n") + "\n" + statusBar
-	}
-	return strings.Join(lines, "\n")
+	return strings.Join(lines, "\n") + "\n" + statusBar
 }
 
 func (m Model) renderSlide() string {
@@ -322,7 +312,10 @@ func (m Model) renderStatus() string {
 		left = strings.Join(parts, " │ ")
 	}
 
-	right := fmt.Sprintf(" %d/%d ", m.current+1, len(m.pres.Slides))
+	right := ""
+	if m.pres.Meta.Pager {
+		right = fmt.Sprintf(" %d/%d ", m.current+1, len(m.pres.Slides))
+	}
 
 	gap := m.width - lipgloss.Width(left) - lipgloss.Width(right) - 2
 	if gap < 0 {
